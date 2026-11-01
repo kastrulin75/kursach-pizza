@@ -1,0 +1,63 @@
+{% load static %}<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Пиццерия{% endblock %} · Пиццерия</title>
+    <script>document.documentElement.classList.add('js');</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="{% static 'ksa/style.css' %}">
+</head>
+<body>
+<header class="header">
+    <div class="container header__inner">
+        <a href="{% url 'menu' %}" class="logo">Пиццерия</a>
+        <nav class="nav">
+            <a href="{% url 'menu' %}" class="nav__link">Меню</a>
+            {% if user.is_authenticated and not user.is_staff %}
+                <a href="{% url 'orders' %}" class="nav__link">Мои заказы</a>
+                <a href="{% url 'cart' %}" class="nav__cart">
+                    Корзина <span class="nav__count" data-cart-count>{% if user.cart.items_count %}{{ user.cart.items_count }}{% endif %}</span>
+                </a>
+                <form action="{% url 'logout' %}" method="post" class="nav__logout">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">{{ user.username }} · Выйти</button>
+                </form>
+            {% else %}
+                <a href="{% url 'login' %}" class="nav__link">Войти</a>
+                <a href="{% url 'register' %}" class="btn btn--small">Регистрация</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+
+<main class="container main">
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+    <div class="container footer__inner">
+        <div>
+            <div class="footer__brand">Пиццерия</div>
+            <div class="muted">Доставка горячей пиццы каждый день с 10:00 до 23:00</div>
+        </div>
+        <nav class="footer__nav">
+            <a href="{% url 'menu' %}">Меню</a>
+            <a href="{% url 'cart' %}">Корзина</a>
+            <a href="{% url 'orders' %}">Мои заказы</a>
+        </nav>
+        <div class="footer__author">© {% now "Y" %} Матвеев Ефим</div>
+    </div>
+</footer>
+
+<div class="toasts">
+    {% for message in messages %}
+        <div class="toast toast--{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+</div>
+
+<script src="{% static 'ksa/app.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,322 @@
+[
+{
+  "model": "ksa.category",
+  "pk": 1,
+  "fields": {
+    "name": "Пицца",
+    "slug": "pizza"
+  }
+},
+{
+  "model": "ksa.category",
+  "pk": 2,
+  "fields": {
+    "name": "Закуски",
+    "slug": "snacks"
+  }
+},
+{
+  "model": "ksa.category",
+  "pk": 3,
+  "fields": {
+    "name": "Соусы",
+    "slug": "sauces"
+  }
+},
+{
+  "model": "ksa.category",
+  "pk": 4,
+  "fields": {
+    "name": "Напитки",
+    "slug": "drinks"
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 1,
+  "fields": {
+    "category": 1,
+    "name": "Пепперони",
+    "description": "30 см. Томатный соус, моцарелла, пикантная колбаса пепперони.",
+    "price": "549.00",
+    "image": "pizzas/pepperoni.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 2,
+  "fields": {
+    "category": 1,
+    "name": "Маргарита",
+    "description": "30 см. Томатный соус, моцарелла, свежий базилик.",
+    "price": "449.00",
+    "image": "pizzas/margarita.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 3,
+  "fields": {
+    "category": 1,
+    "name": "Цыплёнок",
+    "description": "30 см. Томатный соус, моцарелла, куриное филе, шампиньоны, кукуруза, красный лук, соус ранч.",
+    "price": "599.00",
+    "image": "pizzas/chicken.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 4,
+  "fields": {
+    "category": 1,
+    "name": "Ветчина и сыр",
+    "description": "30 см. Томатный соус, моцарелла, ветчина, итальянские травы.",
+    "price": "499.00",
+    "image": "pizzas/ham-cheese.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 5,
+  "fields": {
+    "category": 1,
+    "name": "Четыре сыра",
+    "description": "30 см. Томатный соус, моцарелла, чеддер, пармезан, дор блю.",
+    "price": "599.00",
+    "image": "pizzas/four-cheese.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 6,
+  "fields": {
+    "category": 1,
+    "name": "Мясная",
+    "description": "30 см. Томатный соус, моцарелла, ветчина, бекон, пепперони, охотничьи колбаски, куриное филе.",
+    "price": "649.00",
+    "image": "pizzas/meat.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 7,
+  "fields": {
+    "category": 1,
+    "name": "Веганская",
+    "description": "30 см. Томатный соус, растительный сыр, томаты, шампиньоны, брокколи, болгарский перец, маслины, кукуруза, красный лук, шпинат.",
+    "price": "549.00",
+    "image": "pizzas/vegan.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 8,
+  "fields": {
+    "category": 1,
+    "name": "Пополам",
+    "description": "30 см. Половина мясной и половина веганской — для тех, кто не может выбрать.",
+    "price": "629.00",
+    "image": "pizzas/half.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 9,
+  "fields": {
+    "category": 2,
+    "name": "Картофель фри",
+    "description": "150 г. Хрустящий картофель с солью и травами.",
+    "price": "169.00",
+    "image": "pizzas/fries.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 10,
+  "fields": {
+    "category": 2,
+    "name": "Наггетсы",
+    "description": "9 шт. Куриное филе в хрустящей панировке.",
+    "price": "249.00",
+    "image": "pizzas/nuggets.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 11,
+  "fields": {
+    "category": 2,
+    "name": "Сырные палочки",
+    "description": "8 шт. Моцарелла в панировке с травами.",
+    "price": "279.00",
+    "image": "pizzas/cheese-sticks.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 12,
+  "fields": {
+    "category": 2,
+    "name": "Креветки в панировке",
+    "description": "8 шт. Тигровые креветки в хрустящей панировке.",
+    "price": "399.00",
+    "image": "pizzas/shrimps.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 13,
+  "fields": {
+    "category": 3,
+    "name": "Кетчуп",
+    "description": "40 г. Классический томатный кетчуп.",
+    "price": "59.00",
+    "image": "pizzas/ketchup.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 14,
+  "fields": {
+    "category": 3,
+    "name": "Барбекю",
+    "description": "40 г. Густой копчёный соус барбекю.",
+    "price": "59.00",
+    "image": "pizzas/bbq.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 15,
+  "fields": {
+    "category": 3,
+    "name": "Сырный",
+    "description": "40 г. Нежный соус из сыра чеддер.",
+    "price": "59.00",
+    "image": "pizzas/cheese-sauce.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 16,
+  "fields": {
+    "category": 3,
+    "name": "Кисло-сладкий",
+    "description": "40 г. Соус с ананасом и лёгкой остротой.",
+    "price": "59.00",
+    "image": "pizzas/sweet-sour.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 17,
+  "fields": {
+    "category": 3,
+    "name": "Чесночный",
+    "description": "40 г. Сливочный соус с чесноком и зеленью.",
+    "price": "59.00",
+    "image": "pizzas/garlic.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 18,
+  "fields": {
+    "category": 4,
+    "name": "Кола",
+    "description": "0,5 л. Газированный напиток.",
+    "price": "129.00",
+    "image": "pizzas/cola.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 19,
+  "fields": {
+    "category": 4,
+    "name": "Фанта",
+    "description": "0,5 л. Апельсиновый газированный напиток.",
+    "price": "129.00",
+    "image": "pizzas/fanta.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 20,
+  "fields": {
+    "category": 4,
+    "name": "Спрайт",
+    "description": "0,5 л. Лимонно-лаймовый газированный напиток.",
+    "price": "129.00",
+    "image": "pizzas/sprite.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 21,
+  "fields": {
+    "category": 4,
+    "name": "Вода",
+    "description": "0,5 л. Питьевая газированная вода.",
+    "price": "89.00",
+    "image": "pizzas/water.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 22,
+  "fields": {
+    "category": 4,
+    "name": "Чай",
+    "description": "300 мл. Чёрный чай.",
+    "price": "99.00",
+    "image": "pizzas/tea.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 23,
+  "fields": {
+    "category": 4,
+    "name": "Кофе",
+    "description": "300 мл. Американо из свежеобжаренного зерна.",
+    "price": "149.00",
+    "image": "pizzas/coffee.jpg",
+    "is_available": true
+  }
+},
+{
+  "model": "ksa.pizza",
+  "pk": 24,
+  "fields": {
+    "category": 4,
+    "name": "Пиво",
+    "description": "0,5 л. Светлое пиво. Продаётся только лицам старше 18 лет.",
+    "price": "199.00",
+    "image": "pizzas/beer.jpg",
+    "is_available": true
+  }
+}
+]

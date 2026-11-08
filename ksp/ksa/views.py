@@ -1,22 +1,33 @@
 import re
 
-from django.contrib import messages
-from django.contrib.auth import login
-from django.contrib.auth.decorators import user_passes_test
-from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from django.contrib.auth import authenticate
 from django.db import transaction
-from django.http import JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny, BasePermission
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .models import Category, Pizza, Cart, CartItem, Order, OrderItem
 from .serializers import (
     CategorySerializer, PizzaSerializer, CartSerializer,
-    CartItemSerializer, OrderSerializer, OrderStatusSerializer
+    CartItemSerializer, OrderSerializer, OrderStatusSerializer, RegisterSerializer
 )
+
+
+class IsCustomer(BasePermission):
+    message = 'Войдите в аккаунт покупателя'
+
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and not request.user.is_staff
+
+
+def error_list(errors):
+    result = []
+    for value in errors.values():
+        for text in value:
+            result.append(str(text))
+    return result
 
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -26,7 +37,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class PizzaViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Pizza.objects.filter(is_available=True)
+    queryset = Pizza.objects.filter(is_available=True).select_related('category').order_by('category__id', 'id')
     serializer_class = PizzaSerializer
     permission_classes = [AllowAny]
 
@@ -38,32 +49,59 @@ class PizzaViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
+def cart_info(cart, item_id, quantity, subtotal=0):
+    return {
+        'item_id': item_id,
+        'quantity': quantity,
+        'subtotal': float(subtotal),
+        'total': float(cart.total_price),
+        'count': cart.items_count,
+    }
+
+
 class CartViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
     def _get_cart(self):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         return cart
 
     def list(self, request):
-        serializer = CartSerializer(self._get_cart())
+        serializer = CartSerializer(self._get_cart(), context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def add(self, request):
         cart = self._get_cart()
         serializer = CartItemSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response({'errors': error_list(serializer.errors)}, status=status.HTTP_400_BAD_REQUEST)
         pizza = serializer.validated_data['pizza']
         quantity = serializer.validated_data.get('quantity', 1)
 
         item, created = CartItem.objects.get_or_create(cart=cart, pizza=pizza)
         if not created:
-            item.quantity += quantity
+            item.quantity = min(item.quantity + quantity, 99)
         else:
-            item.quantity = quantity
+            item.quantity = min(quantity, 99)
         item.save()
-        return Response(CartItemSerializer(item).data, status=status.HTTP_200_OK)
+        return Response(cart_info(cart, item.id, item.quantity, item.subtotal), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def update_item(self, request):
+        cart = self._get_cart()
+        try:
+            item = cart.items.get(id=request.data.get('item_id'))
+            quantity = int(request.data.get('quantity', 1))
+        except (CartItem.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Товар не найден'}, status=status.HTTP_404_NOT_FOUND)
+        if quantity > 0:
+            item.quantity = min(quantity, 99)
+            item.save()
+            return Response(cart_info(cart, item.id, item.quantity, item.subtotal))
+        item_id = item.id
+        item.delete()
+        return Response(cart_info(cart, item_id, 0))
 
     @action(detail=False, methods=['post'])
     def remove(self, request):
@@ -71,10 +109,10 @@ class CartViewSet(viewsets.ViewSet):
         item_id = request.data.get('item_id')
         try:
             item = cart.items.get(id=item_id)
-        except CartItem.DoesNotExist:
+        except (CartItem.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'Товар не найден'}, status=status.HTTP_404_NOT_FOUND)
         item.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(cart_info(cart, int(item_id), 0))
 
     @action(detail=False, methods=['post'])
     def clear(self, request):
@@ -84,7 +122,8 @@ class CartViewSet(viewsets.ViewSet):
 
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
+    http_method_names = ['get', 'post']
 
     def get_queryset(self):
         return Order.objects.filter(user=self.request.user).order_by('-created_at')
@@ -92,12 +131,18 @@ class OrderViewSet(viewsets.ModelViewSet):
     def create(self, request):
         cart = Cart.objects.filter(user=request.user).first()
         if not cart or not cart.items.exists():
-            return Response({'error': 'Корзина пуста'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'errors': ['Корзина пуста']}, status=status.HTTP_400_BAD_REQUEST)
 
-        address = request.data.get('address')
-        phone = request.data.get('phone')
-        if not address or not phone:
-            return Response({'error': 'Укажите адрес и телефон'}, status=status.HTTP_400_BAD_REQUEST)
+        address = str(request.data.get('address', '')).strip()
+        phone = str(request.data.get('phone', '')).strip()
+        errors = []
+        if not address:
+            errors.append('Укажите адрес доставки')
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) < 10 or len(digits) > 15:
+            errors.append('Введите корректный номер телефона')
+        if errors:
+            return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
 
         order = make_order(cart, address, phone)
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
@@ -111,17 +156,10 @@ class OrderViewSet(viewsets.ModelViewSet):
     def cancel(self, request, pk=None):
         order = self.get_object()
         if order.status not in ('new', 'cooking'):
-            return Response({'error': 'Нельзя отменить заказ'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Этот заказ уже нельзя отменить'}, status=status.HTTP_400_BAD_REQUEST)
         order.status = 'cancelled'
         order.save()
         return Response(OrderStatusSerializer(order).data)
-
-
-def is_customer(user):
-    return user.is_authenticated and not user.is_staff
-
-
-customer_required = user_passes_test(is_customer)
 
 
 @transaction.atomic
@@ -145,208 +183,46 @@ def make_order(cart, address, phone):
     return order
 
 
-def is_ajax(request):
-    return request.headers.get('x-requested-with') == 'XMLHttpRequest'
-
-
-def cart_json(cart, item_id, quantity, subtotal=0):
-    return JsonResponse({
-        'item_id': item_id,
-        'quantity': quantity,
-        'subtotal': float(subtotal),
-        'total': float(cart.total_price),
-        'count': cart.items_count,
-    })
-
-
-def menu(request):
-    pizzas = Pizza.objects.filter(is_available=True).select_related('category').order_by('category__id', 'id')
-    category = request.GET.get('category')
-    if category:
-        pizzas = pizzas.filter(category__slug=category)
-
-    pizzas = list(pizzas)
-    if is_customer(request.user):
-        in_cart = {}
-        for item in CartItem.objects.filter(cart__user=request.user):
-            in_cart[item.pizza_id] = item
-        for pizza in pizzas:
-            if pizza.id in in_cart:
-                pizza.cart_item_id = in_cart[pizza.id].id
-                pizza.cart_qty = in_cart[pizza.id].quantity
-
-    return render(request, 'ksa/menu.html', {
-        'categories': Category.objects.all(),
-        'pizzas': pizzas,
-        'current_category': category,
-    })
-
-
-@customer_required
-def cart_page(request):
-    cart, _ = Cart.objects.get_or_create(user=request.user)
-    return render(request, 'ksa/cart.html', {'cart': cart, 'items': cart.items.all()})
-
-
-@customer_required
-def cart_add(request, pizza_id):
-    if request.method == 'POST':
-        pizza = get_object_or_404(Pizza, id=pizza_id)
-        cart, _ = Cart.objects.get_or_create(user=request.user)
-        item, created = CartItem.objects.get_or_create(cart=cart, pizza=pizza)
-        if not created:
-            item.quantity += 1
-            item.save()
-        if is_ajax(request):
-            return cart_json(cart, item.id, item.quantity, item.subtotal)
-        messages.success(request, f'Добавлено в корзину: {pizza.name}')
-    return redirect('menu')
-
-
-@customer_required
-def cart_update(request, item_id):
-    item = get_object_or_404(CartItem, id=item_id, cart__user=request.user)
-    if request.method == 'POST':
-        quantity = int(request.POST.get('quantity', 1))
-        if quantity > 0:
-            item.quantity = min(quantity, 99)
-            item.save()
-        else:
-            item.delete()
-        if is_ajax(request):
-            if quantity > 0:
-                return cart_json(item.cart, item.id, item.quantity, item.subtotal)
-            return cart_json(item.cart, item_id, 0)
-    return redirect('cart')
-
-
-@customer_required
-def cart_remove(request, item_id):
-    item = get_object_or_404(CartItem, id=item_id, cart__user=request.user)
-    if request.method == 'POST':
-        item.delete()
-        if is_ajax(request):
-            return cart_json(item.cart, item_id, 0)
-    return redirect('cart')
-
-
-@customer_required
-def checkout(request):
-    cart, _ = Cart.objects.get_or_create(user=request.user)
-    if not cart.items.exists():
-        messages.warning(request, 'Корзина пуста')
-        return redirect('menu')
-
-    address = ''
-    phone = ''
-    errors = []
-
-    if request.method == 'POST':
-        address = request.POST.get('address', '').strip()
-        phone = request.POST.get('phone', '').strip()
-        if not address:
-            errors.append('Укажите адрес доставки')
-        digits = re.sub(r'\D', '', phone)
-        if len(digits) < 10 or len(digits) > 15:
-            errors.append('Введите корректный номер телефона')
-
-        if not errors:
-            order = make_order(cart, address, phone)
-            messages.success(request, f'Заказ #{order.id} оформлен!')
-            return redirect('order_detail', pk=order.id)
-    else:
-        last_order = Order.objects.filter(user=request.user).order_by('-created_at').first()
-        if last_order:
-            address = last_order.address
-            phone = last_order.phone
-
-    return render(request, 'ksa/checkout.html', {
-        'cart': cart,
-        'items': cart.items.all(),
-        'address': address,
-        'phone': phone,
-        'errors': errors,
-    })
-
-
-@customer_required
-def order_list(request):
-    orders = Order.objects.filter(user=request.user).order_by('-created_at')
-    return render(request, 'ksa/order_list.html', {'orders': orders})
-
-
-@customer_required
-def order_detail(request, pk):
-    order = get_object_or_404(Order, pk=pk, user=request.user)
-
-    steps = []
-    passed = order.status != 'cancelled'
-    for code, name in Order.STATUS_CHOICES:
-        if code == 'cancelled':
-            continue
-        if code == order.status:
-            steps.append({'code': code, 'name': name, 'state': 'current'})
-            passed = False
-        elif passed:
-            steps.append({'code': code, 'name': name, 'state': 'done'})
-        else:
-            steps.append({'code': code, 'name': name, 'state': 'todo'})
-
-    return render(request, 'ksa/order_detail.html', {
-        'order': order,
-        'steps': steps,
-        'can_cancel': order.status in ('new', 'cooking'),
-    })
-
-
-@customer_required
-def order_cancel(request, pk):
-    order = get_object_or_404(Order, pk=pk, user=request.user)
-    if request.method == 'POST':
-        if order.status in ('new', 'cooking'):
-            order.status = 'cancelled'
-            order.save()
-            messages.info(request, f'Заказ #{order.id} отменён')
-        else:
-            messages.error(request, 'Этот заказ уже нельзя отменить')
-    return redirect('order_detail', pk=order.id)
-
-
-def login_page(request):
-    next_url = request.POST.get('next') or request.GET.get('next') or ''
-    error = ''
-
-    if request.method == 'POST':
-        form = AuthenticationForm(request, data=request.POST)
-        if form.is_valid():
-            user = form.get_user()
-            if user.is_staff:
-                error = 'Этот аккаунт нельзя использовать на сайте'
-            else:
-                login(request, user)
-                if next_url.startswith('/') and not next_url.startswith('//'):
-                    return redirect(next_url)
-                return redirect('menu')
-        else:
-            error = 'Неверное имя пользователя или пароль'
-    else:
-        form = AuthenticationForm(request)
-
-    return render(request, 'ksa/login.html', {'form': form, 'error': error, 'next': next_url})
-
-
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def register(request):
-    if request.method == 'POST':
-        form = UserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect('menu')
-    else:
-        form = UserCreationForm()
-    return render(request, 'ksa/register.html', {'form': form})
+    serializer = RegisterSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({'errors': error_list(serializer.errors)}, status=status.HTTP_400_BAD_REQUEST)
+    user = serializer.save()
+    token = Token.objects.create(user=user)
+    return Response({'token': token.key, 'username': user.username}, status=status.HTTP_201_CREATED)
 
 
-def csrf_failure(request, reason=''):
-    messages.error(request, 'Страница устарела, попробуйте ещё раз')
-    return redirect(request.META.get('HTTP_REFERER') or 'menu')
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login(request):
+    username = request.data.get('username', '')
+    password = request.data.get('password', '')
+    user = authenticate(username=username, password=password)
+    if user is None:
+        return Response({'error': 'Неверное имя пользователя или пароль'}, status=status.HTTP_400_BAD_REQUEST)
+    if user.is_staff:
+        return Response({'error': 'Этот аккаунт нельзя использовать на сайте'}, status=status.HTTP_403_FORBIDDEN)
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({'token': token.key, 'username': user.username})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout(request):
+    Token.objects.filter(user=request.user).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+@permission_classes([IsCustomer])
+def me(request):
+    cart, _ = Cart.objects.get_or_create(user=request.user)
+    last_order = Order.objects.filter(user=request.user).order_by('-created_at').first()
+    return Response({
+        'username': request.user.username,
+        'cart_count': cart.items_count,
+        'last_address': last_order.address if last_order else '',
+        'last_phone': last_order.phone if last_order else '',
+    })

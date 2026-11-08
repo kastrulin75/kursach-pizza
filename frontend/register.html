@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Регистрация · Пиццерия</title>
+    <script>document.documentElement.classList.add('js');</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="header">
+    <div class="container header__inner">
+        <a href="index.html" class="logo">Пиццерия</a>
+        <nav class="nav"></nav>
+    </div>
+</header>
+
+<main class="container main">
+<div class="auth">
+    <form class="panel form" id="register-form" novalidate>
+        <h1 class="page-title">Регистрация</h1>
+        <div id="errors"></div>
+        <label class="field">
+            <span class="field__label">Имя пользователя</span>
+            <input type="text" id="username" autocomplete="username" maxlength="150">
+            <div class="field__help">Не более 150 символов. Только буквы, цифры и символы @/./+/-/_.</div>
+        </label>
+        <label class="field">
+            <span class="field__label">Пароль</span>
+            <input type="password" id="password1" autocomplete="new-password">
+            <div class="field__help">Пароль должен быть не короче 8 символов и не состоять только из цифр.</div>
+        </label>
+        <label class="field">
+            <span class="field__label">Подтверждение пароля</span>
+            <input type="password" id="password2" autocomplete="new-password">
+        </label>
+        <button type="submit" class="btn btn--block">Создать аккаунт</button>
+        <p class="muted auth__switch">Уже есть аккаунт? <a href="login.html">Войти</a></p>
+    </form>
+</div>
+</main>
+
+<footer class="footer">
+    <div class="container footer__inner">
+        <div>
+            <div class="footer__brand">Пиццерия</div>
+            <div class="muted">Доставка горячей пиццы каждый день с 10:00 до 23:00</div>
+        </div>
+        <nav class="footer__nav">
+            <a href="index.html">Меню</a>
+            <a href="cart.html">Корзина</a>
+            <a href="orders.html">Мои заказы</a>
+        </nav>
+        <div class="footer__author">© <span id="year">2026</span> Матвеев Ефим</div>
+    </div>
+</footer>
+
+<div class="toasts"></div>
+
+<script src="js/app.js"></script>
+<script src="js/register.js"></script>
+</body>
+</html>

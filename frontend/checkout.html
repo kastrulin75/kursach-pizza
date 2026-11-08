@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Оформление заказа · Пиццерия</title>
+    <script>document.documentElement.classList.add('js');</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="header">
+    <div class="container header__inner">
+        <a href="index.html" class="logo">Пиццерия</a>
+        <nav class="nav"></nav>
+    </div>
+</header>
+
+<main class="container main">
+<h1 class="page-title">Оформление заказа</h1>
+
+<div class="layout-split">
+    <form class="panel form" id="checkout-form" novalidate>
+        <div id="errors"></div>
+        <label class="field">
+            <span class="field__label">Адрес доставки</span>
+            <input type="text" id="address" placeholder="Улица, дом, квартира" maxlength="255">
+        </label>
+        <label class="field">
+            <span class="field__label">Телефон</span>
+            <input type="tel" id="phone" placeholder="+7 900 123-45-67" maxlength="20">
+        </label>
+        <button type="submit" class="btn btn--block">Подтвердить заказ</button>
+    </form>
+
+    <aside class="panel summary" id="summary"></aside>
+</div>
+</main>
+
+<footer class="footer">
+    <div class="container footer__inner">
+        <div>
+            <div class="footer__brand">Пиццерия</div>
+            <div class="muted">Доставка горячей пиццы каждый день с 10:00 до 23:00</div>
+        </div>
+        <nav class="footer__nav">
+            <a href="index.html">Меню</a>
+            <a href="cart.html">Корзина</a>
+            <a href="orders.html">Мои заказы</a>
+        </nav>
+        <div class="footer__author">© <span id="year">2026</span> Матвеев Ефим</div>
+    </div>
+</footer>
+
+<div class="toasts"></div>
+
+<script src="js/app.js"></script>
+<script src="js/checkout.js"></script>
+</body>
+</html>

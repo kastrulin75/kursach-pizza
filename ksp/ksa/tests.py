@@ -1,182 +1,169 @@
 from django.contrib.auth.models import User
-from django.test import TestCase, Client
-from django.urls import reverse
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient, APITestCase
 
 from .models import Category, Pizza, Order
 
 
-class PizzeriaSiteTests(TestCase):
+class PizzeriaApiTests(APITestCase):
     def setUp(self):
         self.category = Category.objects.create(name='Классические', slug='classic')
         self.other_category = Category.objects.create(name='Острые', slug='spicy')
         self.pizza = Pizza.objects.create(category=self.category, name='Маргарита', price='450.00')
         self.spicy = Pizza.objects.create(category=self.other_category, name='Диабло', price='590.00')
         self.user = User.objects.create_user('ivan', password='test-pass-123')
+        self.token = Token.objects.create(user=self.user)
 
-    def test_menu_shows_pizzas_and_filters_by_category(self):
-        response = self.client.get(reverse('menu'))
-        self.assertContains(response, 'Маргарита')
-        self.assertContains(response, 'Диабло')
+    def auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
 
-        response = self.client.get(reverse('menu'), {'category': 'spicy'})
-        self.assertNotContains(response, 'Маргарита')
-        self.assertContains(response, 'Диабло')
+    def add(self, pizza, quantity=1):
+        return self.client.post('/api/cart/add/', {'pizza_id': pizza.id, 'quantity': quantity}, format='json')
+
+    def test_api_answers_json(self):
+        for url in ['/api/categories/', '/api/pizzas/']:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response['Content-Type'], 'application/json')
+
+    def test_menu_filters_by_category(self):
+        names = [p['name'] for p in self.client.get('/api/pizzas/').json()]
+        self.assertEqual(names, ['Маргарита', 'Диабло'])
+        names = [p['name'] for p in self.client.get('/api/pizzas/?category=spicy').json()]
+        self.assertEqual(names, ['Диабло'])
+
+    def test_hidden_pizza_not_in_menu(self):
+        self.spicy.is_available = False
+        self.spicy.save()
+        names = [p['name'] for p in self.client.get('/api/pizzas/').json()]
+        self.assertNotIn('Диабло', names)
 
     def test_cart_requires_login(self):
-        response = self.client.get(reverse('cart'))
-        self.assertRedirects(response, f"{reverse('login')}?next={reverse('cart')}")
+        self.assertEqual(self.client.get('/api/cart/').status_code, 401)
+        self.assertEqual(self.client.get('/api/orders/').status_code, 401)
+
+    def test_register_gives_token(self):
+        response = self.client.post('/api/auth/register/', {'username': 'maria', 'password1': 'Sl0zhnyi-parol', 'password2': 'Sl0zhnyi-parol'}, format='json')
+        self.assertEqual(response.status_code, 201)
+        token = response.json()['token']
+        self.assertTrue(User.objects.filter(username='maria').exists())
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
+        self.assertEqual(self.client.get('/api/auth/me/').json()['username'], 'maria')
+
+    def test_register_errors(self):
+        response = self.client.post('/api/auth/register/', {'username': 'ivan', 'password1': '123', 'password2': '321'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Пользователь с таким именем уже существует', response.json()['errors'])
+
+    def test_weak_password_rejected(self):
+        response = self.client.post('/api/auth/register/', {'username': 'olga', 'password1': '12345', 'password2': '12345'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username='olga').exists())
+
+    def test_login_and_logout(self):
+        response = self.client.post('/api/auth/login/', {'username': 'ivan', 'password': 'wrong'}, format='json')
+        self.assertEqual(response.json()['error'], 'Неверное имя пользователя или пароль')
+
+        response = self.client.post('/api/auth/login/', {'username': 'ivan', 'password': 'test-pass-123'}, format='json')
+        self.assertEqual(response.json()['token'], self.token.key)
+
+        self.auth()
+        self.assertEqual(self.client.post('/api/auth/logout/').status_code, 204)
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 401)
+
+    def test_admin_cannot_use_site(self):
+        boss = User.objects.create_superuser('boss', password='test-pass-123')
+        response = self.client.post('/api/auth/login/', {'username': 'boss', 'password': 'test-pass-123'}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'Этот аккаунт нельзя использовать на сайте')
+        boss_token = Token.objects.create(user=boss)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + boss_token.key)
+        self.assertEqual(self.client.get('/api/cart/').status_code, 403)
 
     def test_add_update_and_remove_cart_items(self):
-        self.client.force_login(self.user)
-        self.client.post(reverse('cart_add', args=[self.pizza.id]))
-        self.client.post(reverse('cart_add', args=[self.pizza.id]))
-        item = self.user.cart.items.get()
-        self.assertEqual(item.quantity, 2)
+        self.auth()
+        self.add(self.pizza)
+        data = self.add(self.pizza).json()
+        self.assertEqual(data['quantity'], 2)
+        self.assertEqual(data['count'], 2)
 
-        self.client.post(reverse('cart_update', args=[item.id]), {'quantity': 5})
-        item.refresh_from_db()
-        self.assertEqual(item.quantity, 5)
+        data = self.client.post('/api/cart/update_item/', {'item_id': data['item_id'], 'quantity': 5}, format='json').json()
+        self.assertEqual(data['quantity'], 5)
+        self.assertEqual(data['total'], 2250)
 
-        response = self.client.get(reverse('cart'))
-        self.assertContains(response, '2250 ₽')
+        cart = self.client.get('/api/cart/').json()
+        self.assertEqual(cart['items_count'], 5)
 
-        self.client.post(reverse('cart_remove', args=[item.id]))
-        self.assertFalse(self.user.cart.items.exists())
-
-    def test_cart_buttons_without_reload(self):
-        self.client.force_login(self.user)
-        ajax = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
-
-        data = self.client.post(reverse('cart_add', args=[self.pizza.id]), **ajax).json()
-        self.assertEqual(data['quantity'], 1)
-        self.assertEqual(data['count'], 1)
-
-        data = self.client.post(reverse('cart_update', args=[data['item_id']]), {'quantity': 3}, **ajax).json()
-        self.assertEqual(data['quantity'], 3)
-        self.assertEqual(data['total'], 1350)
-
-        menu = self.client.get(reverse('menu'))
-        self.assertContains(menu, 'buy is-added')
-
-        data = self.client.post(reverse('cart_update', args=[data['item_id']]), {'quantity': 0}, **ajax).json()
-        self.assertEqual(data['quantity'], 0)
+        data = self.client.post('/api/cart/remove/', {'item_id': data['item_id']}, format='json').json()
         self.assertEqual(data['count'], 0)
         self.assertFalse(self.user.cart.items.exists())
 
-    def test_checkout_creates_order_and_clears_cart(self):
-        self.client.force_login(self.user)
-        self.client.post(reverse('cart_add', args=[self.pizza.id]))
-        self.client.post(reverse('cart_add', args=[self.spicy.id]))
+    def test_quantity_zero_removes_item(self):
+        self.auth()
+        data = self.add(self.pizza).json()
+        data = self.client.post('/api/cart/update_item/', {'item_id': data['item_id'], 'quantity': 0}, format='json').json()
+        self.assertEqual(data['quantity'], 0)
+        self.assertFalse(self.user.cart.items.exists())
 
-        response = self.client.post(reverse('checkout'), {
-            'address': 'ул. Ленина, 1', 'phone': '+7 900 123-45-67'
-        })
+    def test_checkout_creates_order_and_clears_cart(self):
+        self.auth()
+        self.add(self.pizza)
+        self.add(self.spicy)
+        response = self.client.post('/api/orders/', {'address': 'ул. Ленина, 1', 'phone': '+7 900 123-45-67'}, format='json')
+        self.assertEqual(response.status_code, 201)
         order = Order.objects.get()
-        self.assertRedirects(response, reverse('order_detail', args=[order.pk]))
         self.assertEqual(order.total_price, 1040)
         self.assertEqual(order.items.count(), 2)
         self.assertFalse(self.user.cart.items.exists())
 
-    def test_checkout_rejects_bad_phone(self):
-        self.client.force_login(self.user)
-        self.client.post(reverse('cart_add', args=[self.pizza.id]))
-        response = self.client.post(reverse('checkout'), {'address': 'ул. Ленина, 1', 'phone': '123'})
-        self.assertContains(response, 'Введите корректный номер телефона')
+    def test_checkout_rejects_bad_data(self):
+        self.auth()
+        self.add(self.pizza)
+        response = self.client.post('/api/orders/', {'address': '', 'phone': '123'}, format='json')
+        self.assertEqual(response.json()['errors'], ['Укажите адрес доставки', 'Введите корректный номер телефона'])
         self.assertFalse(Order.objects.exists())
 
-    def test_order_status_page_and_cancel(self):
+    def test_empty_cart_cannot_be_ordered(self):
+        self.auth()
+        response = self.client.post('/api/orders/', {'address': 'ул. Ленина, 1', 'phone': '+79001234567'}, format='json')
+        self.assertEqual(response.json()['errors'], ['Корзина пуста'])
+
+    def test_order_status_and_cancel(self):
         order = Order.objects.create(user=self.user, address='ул. Ленина, 1', phone='+79001234567', status='cooking')
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('order_detail', args=[order.pk]))
-        self.assertContains(response, 'Готовится')
-        self.assertContains(response, 'is-current')
-
-        api_response = self.client.get(f'/api/orders/{order.pk}/status/')
-        self.assertEqual(api_response.json()['status'], 'cooking')
-
-        self.client.post(reverse('order_cancel', args=[order.pk]))
+        self.auth()
+        self.assertEqual(self.client.get('/api/orders/' + str(order.pk) + '/status/').json()['status_display'], 'Готовится')
+        self.client.post('/api/orders/' + str(order.pk) + '/cancel/')
         order.refresh_from_db()
         self.assertEqual(order.status, 'cancelled')
 
-    def test_order_status_api_for_live_updates(self):
-        order = Order.objects.create(user=self.user, address='ул. Ленина, 1', phone='+79001234567')
-        self.client.force_login(self.user)
-
-        data = self.client.get('/api/orders/').json()
-        self.assertEqual(data[0]['status'], 'new')
-        self.assertEqual(data[0]['status_display'], 'Новый')
-
-        order.status = 'delivering'
-        order.save()
-        data = self.client.get(f'/api/orders/{order.pk}/status/').json()
-        self.assertEqual(data['status_display'], 'В доставке')
-
-        page = self.client.get(reverse('order_detail', args=[order.pk]))
-        self.assertContains(page, 'data-step-status="delivering"')
-        self.assertContains(page, 'order-cancel is-gone')
-
-    def test_cancelled_order_has_no_active_steps(self):
-        order = Order.objects.create(user=self.user, address='ул. Ленина, 1', phone='+79001234567', status='cancelled')
-        self.client.force_login(self.user)
-        page = self.client.get(reverse('order_detail', args=[order.pk]))
-        self.assertNotContains(page, 'is-current')
-        self.assertNotContains(page, 'is-done')
+    def test_delivering_order_cannot_be_cancelled(self):
+        order = Order.objects.create(user=self.user, address='ул. Ленина, 1', phone='+79001234567', status='delivering')
+        self.auth()
+        response = self.client.post('/api/orders/' + str(order.pk) + '/cancel/')
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'delivering')
 
     def test_user_cannot_see_foreign_order(self):
         stranger = User.objects.create_user('petr', password='test-pass-123')
         order = Order.objects.create(user=stranger, address='ул. Мира, 2', phone='+79001234567')
-        self.client.force_login(self.user)
-        response = self.client.get(reverse('order_detail', args=[order.pk]))
-        self.assertEqual(response.status_code, 404)
+        self.auth()
+        self.assertEqual(self.client.get('/api/orders/' + str(order.pk) + '/').status_code, 404)
+        self.assertEqual(self.client.get('/api/orders/').json(), [])
 
-    def test_login_and_logout(self):
-        response = self.client.post(reverse('login'), {'username': 'ivan', 'password': 'wrong'})
-        self.assertContains(response, 'Неверное имя пользователя или пароль')
+    def test_me_returns_last_address(self):
+        Order.objects.create(user=self.user, address='ул. Ленина, 1', phone='+79001234567')
+        self.auth()
+        data = self.client.get('/api/auth/me/').json()
+        self.assertEqual(data['last_address'], 'ул. Ленина, 1')
 
-        response = self.client.post(reverse('login'), {'username': 'ivan', 'password': 'test-pass-123'})
-        self.assertRedirects(response, reverse('menu'))
-        self.assertContains(self.client.get(reverse('menu')), 'ivan')
-
-        self.client.post(reverse('logout'))
-        self.assertNotContains(self.client.get(reverse('menu')), 'ivan')
-
-    def test_old_csrf_token_redirects_back(self):
-        client = Client(enforce_csrf_checks=True)
-        client.force_login(self.user)
-        client.get(reverse('menu'))
-        response = client.post(
-            reverse('cart_add', args=[self.pizza.id]),
-            {'csrfmiddlewaretoken': 'x' * 64},
-            HTTP_REFERER='http://testserver/',
-        )
-        self.assertRedirects(response, 'http://testserver/', fetch_redirect_response=False)
-        self.assertContains(client.get(reverse('menu')), 'Страница устарела')
-
-    def test_admin_cannot_use_site(self):
+    def test_admin_panel_works(self):
         User.objects.create_superuser('boss', password='test-pass-123')
+        client = APIClient()
+        client.login(username='boss', password='test-pass-123')
+        self.assertEqual(client.get('/admin/').status_code, 200)
 
-        response = self.client.post(reverse('login'), {'username': 'boss', 'password': 'test-pass-123'})
-        self.assertContains(response, 'Этот аккаунт нельзя использовать на сайте')
-        self.assertNotIn('_auth_user_id', self.client.session)
-
-        self.client.login(username='boss', password='test-pass-123')
-        self.assertEqual(self.client.get('/admin/').status_code, 200)
-        menu = self.client.get(reverse('menu'))
-        self.assertNotContains(menu, 'boss')
-        self.assertContains(menu, 'Регистрация')
-        self.assertRedirects(self.client.get(reverse('cart')), f"{reverse('login')}?next={reverse('cart')}")
-
-    def test_login_returns_to_next_page(self):
-        response = self.client.post(reverse('login'), {
-            'username': 'ivan', 'password': 'test-pass-123', 'next': reverse('orders')
-        })
-        self.assertRedirects(response, reverse('orders'))
-
-    def test_register_logs_user_in(self):
-        response = self.client.post(reverse('register'), {
-            'username': 'maria', 'password1': 'Sl0zhnyi-parol', 'password2': 'Sl0zhnyi-parol'
-        })
-        self.assertRedirects(response, reverse('menu'))
-        self.assertTrue(User.objects.filter(username='maria').exists())
-        self.assertContains(self.client.get(reverse('menu')), 'maria')
+    def test_no_html_pages(self):
+        self.assertEqual(self.client.get('/').status_code, 404)
+        self.assertEqual(self.client.get('/cart/').status_code, 404)
